@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Assistant Location - Seventee</title>
+    <meta name="description" content="Assistant intelligent pour agences et candidats à la location immobilière">
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="Ressources/Seventee_Logo_Black_Green_RVB.svg">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="styles-chat.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="chat-header">
+        <div class="chat-header__content">
+            <div class="chat-header__logo">
+                <img src="Ressources/Seventee_Logo_Black_Green_RVB.svg" alt="Seventee" class="logo__img">
+                <span class="chat-header__title">Assistant Location</span>
+            </div>
+            <div class="chat-header__actions">
+                <button class="btn-icon" id="toggleSidebar" aria-label="Toggle sidebar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+                <a href="index.html" class="btn btn--outline btn--small">Retour au site</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="chat-container">
+        <!-- Chat Area (Center) -->
+        <main class="chat-main">
+            <!-- Chat Messages Area -->
+            <div class="chat-messages" id="chatMessages">
+                <!-- Welcome Message -->
+                <div class="message message--system">
+                    <div class="message__avatar">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="message__content">
+                        <div class="message__text">
+                            <strong>Bienvenue sur l'Assistant Location Seventee !</strong><br>
+                            Je peux vous aider à :
+                            <ul>
+                                <li>Répondre à vos questions sur la location</li>
+                                <li>Vérifier vos documents (identité, revenus, garanties)</li>
+                                <li>Vous guider dans vos démarches</li>
+                                <li>Suggérer des actions pour optimiser votre dossier</li>
+                            </ul>
+                            Comment puis-je vous aider aujourd'hui ?
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Upload Area (Hidden by default, shown when needed) -->
+            <div class="document-upload-area" id="documentUploadArea" style="display: none;">
+                <div class="document-upload-area__header">
+                    <h3>Déposer des documents</h3>
+                    <button class="btn-icon" id="closeUploadArea" aria-label="Fermer">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="document-upload-area__content">
+                    <div class="upload-zone" id="uploadZone">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <p>Glissez-déposez vos documents ici</p>
+                        <p class="upload-zone__hint">ou cliquez pour sélectionner</p>
+                        <input type="file" id="fileInput" multiple accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
+                    </div>
+                    <div class="uploaded-files" id="uploadedFiles"></div>
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="chat-input-area">
+                <div class="chat-input-wrapper">
+                    <button class="btn-icon btn-icon--attach" id="attachFiles" aria-label="Joindre un document" title="Joindre un document">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                        </svg>
+                    </button>
+                    <textarea 
+                        id="chatInput" 
+                        class="chat-input" 
+                        placeholder="Tapez votre message..."
+                        rows="1"
+                    ></textarea>
+                    <button class="btn btn--primary btn--send" id="sendMessage" aria-label="Envoyer">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <div class="chat-input-hints">
+                    <span class="hint">💡 Astuce : Vous pouvez déposer des documents pour vérification</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sidebar (Right) -->
+        <aside class="chat-sidebar" id="chatSidebar">
+            <div class="sidebar-header">
+                <h3>Ressources suggérées</h3>
+                <p class="sidebar-subtitle">Liens générés selon notre conversation</p>
+            </div>
+            <div class="sidebar-content" id="sidebarLinks">
+                <div class="sidebar-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <p>Les liens apparaîtront ici au fur et à mesure de la conversation</p>
+                </div>
+            </div>
+            
+            <!-- Document Status (if documents uploaded) -->
+            <div class="sidebar-documents" id="sidebarDocuments" style="display: none;">
+                <h4>Documents déposés</h4>
+                <div class="document-list" id="documentList"></div>
+            </div>
+
+            <!-- Agency Actions (if user is agency) -->
+            <div class="sidebar-actions" id="sidebarActions" style="display: none;">
+                <h4>Actions suggérées</h4>
+                <div class="action-list" id="actionList"></div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+        <div class="loading-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <p>L'assistant réfléchit...</p>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="script-chat.js"></script>
+</body>
+</html>
