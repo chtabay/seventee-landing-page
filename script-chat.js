@@ -7,8 +7,27 @@ class ChatAssistant {
         this.uploadedFiles = [];
         this.suggestedLinks = [];
         this.isUploadOpen = false;
+        this.sessionId = this.getOrCreateSessionId();
+        this.apiUrl = window.API_URL || 'http://localhost:3001'; // URL de l'API backend
+        this.useAPI = window.USE_MISTRAL_API === 'true' || false; // Activer l'API Mistral
         
         this.init();
+    }
+
+    getOrCreateSessionId() {
+        let sessionId = localStorage.getItem('chatSessionId');
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+            localStorage.setItem('chatSessionId', sessionId);
+        }
+        return sessionId;
+    }
+
+    detectUserType() {
+        // Détection basique du type d'utilisateur
+        // En production, utiliser l'authentification réelle
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('userType') || 'candidate'; // 'candidate' | 'agency'
     }
 
     init() {
@@ -84,11 +103,54 @@ class ChatAssistant {
         // Show loading indicator
         this.showLoading();
 
-        // Simulate API call (remplacer par un vrai appel API)
-        setTimeout(() => {
-            this.hideLoading();
-            this.processBotResponse(message);
-        }, 1000 + Math.random() * 1000);
+        // Utiliser l'API Mistral si activée, sinon simulation locale
+        if (this.useAPI) {
+            try {
+                const response = await fetch(`${this.apiUrl}/api/chat/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        sessionId: this.sessionId,
+                        userType: this.detectUserType()
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                this.hideLoading();
+
+                // Afficher la réponse du bot
+                this.addMessage(data.response, 'bot');
+
+                // Ajouter les liens suggérés
+                if (data.suggestedLinks && data.suggestedLinks.length > 0) {
+                    this.addSuggestedLinks(data.suggestedLinks);
+                }
+
+                // Ajouter les suggestions d'actions
+                if (data.actions && data.actions.length > 0) {
+                    this.addActionSuggestions(data.actions);
+                }
+
+            } catch (error) {
+                this.hideLoading();
+                console.error('Erreur API:', error);
+                // Fallback sur la simulation locale en cas d'erreur
+                this.processBotResponse(message);
+            }
+        } else {
+            // Mode simulation (démo)
+            setTimeout(() => {
+                this.hideLoading();
+                this.processBotResponse(message);
+            }, 1000 + Math.random() * 1000);
+        }
     }
 
     addMessage(text, sender = 'bot', metadata = {}) {
