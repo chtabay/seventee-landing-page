@@ -40,6 +40,59 @@ const upload = multer({
 // Store conversations en mémoire (remplacer par une vraie DB en production)
 const conversations = new Map();
 const documents = new Map();
+const responseCache = new Map(); // Cache pour questions fréquentes
+
+// Configuration d'optimisation des coûts
+const MAX_CONTEXT_MESSAGES = 5; // Limiter à 5 derniers messages (au lieu de 10)
+const USE_SUMMARY = true; // Activer le résumé pour conversations longues
+const SUMMARY_THRESHOLD = 10; // Résumer après 10 messages
+const MAX_RESPONSE_TOKENS = 500; // Limiter la taille des réponses
+
+// Tracking des coûts
+const costTracker = {
+    totalTokens: 0,
+    totalCost: 0,
+    requests: 0
+};
+
+function trackCost(usage, model = 'mistral-medium') {
+    const costPerMillion = {
+        'mistral-small': 0.20,
+        'mistral-medium': 0.60,
+        'mistral-large': 2.50,
+        'mixtral-8x7b': 0.50
+    };
+    
+    const cost = (usage.totalTokens / 1_000_000) * (costPerMillion[model] || 0.60);
+    
+    costTracker.totalTokens += usage.totalTokens;
+    costTracker.totalCost += cost;
+    costTracker.requests++;
+    
+    console.log(`💰 Tokens: ${usage.totalTokens} | Coût: ${cost.toFixed(6)}€ | Total: ${costTracker.totalCost.toFixed(4)}€`);
+}
+
+// Fonction de résumé pour optimiser les coûts
+async function summarizeConversation(messages) {
+    if (messages.length === 0) return '';
+    
+    const text = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+    const summaryPrompt = `Résume cette conversation précédente en 2-3 phrases courtes :\n${text}`;
+    
+    try {
+        const response = await mistralClient.chat.complete({
+            model: 'mistral-small', // Modèle moins cher pour résumé
+            messages: [{ role: 'user', content: summaryPrompt }],
+            maxTokens: 100 // Résumé court
+        });
+        
+        trackCost(response.usage, 'mistral-small');
+        return response.choices[0].message.content;
+    } catch (error) {
+        console.error('Erreur résumé:', error);
+        return 'Conversation précédente sur la location immobilière.';
+    }
+}
 
 // ============================================
 // ENDPOINT: Chat avec Mistral AI
@@ -56,20 +109,60 @@ app.post('/api/chat/message', async (req, res) => {
         let conversation = conversations.get(sessionId) || [];
         conversation.push({ role: 'user', content: message });
 
-        // Construire le contexte pour Mistral
-        const systemPrompt = buildSystemPrompt(userType);
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            ...conversation.slice(-10) // Garder les 10 derniers messages pour le contexte
-        ];
+        // OPTIMISATION 1 : Vérifier le cache pour questions fréquentes
+        const cacheKey = `${userType}_${message.toLowerCase().trim()}`;
+        if (responseCache.has(cacheKey)) {
+            const cached = responseCache.get(cacheKey);
+            conversation.push({ role: 'assistant', content: cached.response });
+            conversations.set(sessionId, conversation);
+            
+            console.log('✅ Réponse depuis le cache (coût: 0€)');
+            return res.json({
+                response: cached.response,
+                suggestedLinks: cached.suggestedLinks,
+                actions: cached.actions,
+                cached: true,
+                tokensUsed: 0
+            });
+        }
 
-        // Appel à Mistral AI
+        // OPTIMISATION 2 : Construire le contexte optimisé
+        const systemPrompt = buildSystemPrompt(userType);
+        let messagesToSend;
+
+        if (conversation.length > SUMMARY_THRESHOLD && USE_SUMMARY) {
+            // OPTIMISATION 3 : Résumer les anciens messages si conversation longue
+            const oldMessages = conversation.slice(0, -MAX_CONTEXT_MESSAGES);
+            const recentMessages = conversation.slice(-MAX_CONTEXT_MESSAGES);
+            
+            const summary = await summarizeConversation(oldMessages);
+            
+            messagesToSend = [
+                { role: 'system', content: systemPrompt },
+                { role: 'assistant', content: `Contexte précédent : ${summary}` },
+                ...recentMessages
+            ];
+            
+            console.log(`📝 Conversation longue (${conversation.length} msgs) - Résumé activé`);
+        } else {
+            // Envoyer seulement les derniers messages (limite à MAX_CONTEXT_MESSAGES)
+            const recentMessages = conversation.slice(-MAX_CONTEXT_MESSAGES);
+            messagesToSend = [
+                { role: 'system', content: systemPrompt },
+                ...recentMessages
+            ];
+        }
+
+        // Appel à Mistral AI avec contexte optimisé
         const chatResponse = await mistralClient.chat.complete({
             model: 'mistral-medium', // ou 'mistral-small', 'mistral-large', 'mixtral-8x7b'
-            messages: messages,
+            messages: messagesToSend,
             temperature: 0.7,
-            maxTokens: 1000
+            maxTokens: MAX_RESPONSE_TOKENS // Limiter la réponse aussi
         });
+
+        // Tracking des coûts
+        trackCost(chatResponse.usage, 'mistral-medium');
 
         const botResponse = chatResponse.choices[0].message.content;
 
@@ -84,11 +177,20 @@ app.post('/api/chat/message', async (req, res) => {
         const actions = userType === 'agency' ? 
             await generateActionSuggestions(botResponse, conversation) : [];
 
+        // Mettre en cache la réponse (limiter à 100 entrées)
+        if (responseCache.size >= 100) {
+            const firstKey = responseCache.keys().next().value;
+            responseCache.delete(firstKey);
+        }
+        responseCache.set(cacheKey, { response: botResponse, suggestedLinks, actions });
+
         res.json({
             response: botResponse,
             suggestedLinks,
             actions,
-            sessionId
+            sessionId,
+            tokensUsed: chatResponse.usage.totalTokens,
+            cached: false
         });
 
     } catch (error) {
@@ -406,6 +508,23 @@ function generateId() {
 }
 
 // ============================================
+// ENDPOINT: Statistiques de coûts
+// ============================================
+app.get('/api/stats/costs', (req, res) => {
+    res.json({
+        totalRequests: costTracker.requests,
+        totalTokens: costTracker.totalTokens,
+        totalCost: costTracker.totalCost.toFixed(6),
+        averageCostPerRequest: costTracker.requests > 0 
+            ? (costTracker.totalCost / costTracker.requests).toFixed(6) 
+            : 0,
+        averageTokensPerRequest: costTracker.requests > 0 
+            ? Math.round(costTracker.totalTokens / costTracker.requests) 
+            : 0
+    });
+});
+
+// ============================================
 // DÉMARRAGE DU SERVEUR
 // ============================================
 app.listen(PORT, () => {
@@ -414,6 +533,12 @@ app.listen(PORT, () => {
     console.log(`   POST /api/chat/message`);
     console.log(`   POST /api/documents/upload`);
     console.log(`   POST /api/documents/verify`);
+    console.log(`   GET  /api/stats/costs`);
+    console.log(`\n💰 Optimisations activées:`);
+    console.log(`   - Historique limité à ${MAX_CONTEXT_MESSAGES} messages`);
+    console.log(`   - Résumé activé après ${SUMMARY_THRESHOLD} messages`);
+    console.log(`   - Cache des réponses fréquentes`);
+    console.log(`   - Réponses limitées à ${MAX_RESPONSE_TOKENS} tokens`);
 });
 
 // Gestion des erreurs
